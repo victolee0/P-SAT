@@ -1,2 +1,2 @@
 # P-SAT
-Repository for P-SAT
+2021.03 ~ 딥러닝팀
