@@ -1,0 +1,218 @@
+---
+title: "Untitled"
+author: "Ko"
+date: '2021 8 1 '
+output: html_document
+---
+
+# package load
+```{r}
+library(tidyverse)
+library(data.table)
+library(corrplot)
+```
+
+# data load
+```{r}
+data = fread("data/train.csv")
+```
+
+# basic data check
+
+- target 개수 확인
+
+
+- target 개수 확인
+```{r}
+# 0 : 25191 개
+# 1 : 2809 개
+data %>% group_by(target) %>% summarise(n())
+
+data %>% 
+  group_by(target) %>% 
+  summarise(count = n()) %>%
+  mutate(target = as.factor(target),
+         prop = round(count/sum(count))) %>%  
+  ggplot(aes(x="", y=count, fill = target)) + 
+  geom_bar(width = 1, stat = "identity", alpha = .75) + 
+  geom_text(label = c("90%", "10%"),
+            position = position_stack(vjust = 0.5)) +
+  coord_polar("y", start = 0) + 
+  scale_fill_manual(values = c("lightskyblue", "indianred1")) + 
+  theme_void()
+
+```
+- NA 개수 확인
+```{r}
+# NA 없음
+data %>% is.na %>% sum
+```
+
+- 대부분의 데이터는 정규분포 형태, 스케일만 다름
+https://www.kaggle.com/c/p-sat-2021-summer-seminar/data?select=train.csv < 에서 확인 가능
+```{r fig.height=15, fig.width=15}
+gather_data = data %>% gather(var_0:var_199, key = "var", value = "value") 
+gather_data %>% 
+  mutate(var = parse_number(var)) %>% 
+  filter(var < 100) %>% 
+  ggplot()+
+  geom_histogram(aes(x=value)) + 
+  facet_wrap(~var, nrow = 10, scales = "free")
+
+gather_data %>% 
+  mutate(var = parse_number(var)) %>% 
+  filter(var >= 100) %>% 
+  ggplot()+
+  geom_histogram(aes(x=value)) + 
+  facet_wrap(~var, nrow = 10, scales = "free")
+
+remove(gather_data)
+```
+
+- 변수 간 상관계수
+
+```{r fig.height=15, fig.width=15}
+# 선형 상관은 없는 듯..?
+# PCA, Lasso 와 같은 다중공선성을 해결하기 위한 차원 축소는 제 역할 하기가 어려울 수도 있음
+# 근데 해보긴 해보고 성능을 봐야할 것 같다
+
+train_x %>% cor %>% corrplot(method = "square", type = "upper")
+```
+
+- 타겟 변수에 따른 독립 변수 분포 확인 (전체)
+```{r fig.height=20, fig.width=12}
+
+data %>%  
+  gather(var_0:var_199, key = "var", value = "value") %>% 
+  mutate_if(is.character, parse_number) %>% 
+  mutate(target = as.character(target)) %>% 
+  ggplot(aes(x = value, fill = target, col = target)) + 
+  geom_density(alpha = .3) + 
+  theme_minimal() + 
+  facet_wrap(var~., ncol = 10, scales = "free")
+
+```
+```{r fig.height=20, fig.width=12}
+data %>%  
+  gather(var_0:var_199, key = "var", value = "value") %>% 
+  mutate_if(is.character, parse_number) %>% 
+  mutate(target = as.character(target)) %>% 
+  ggplot(aes(x = value, fill = target, col = target)) + 
+  geom_histogram(alpha = 0.1, aes(y = ..density..), position = 'identity') + 
+  theme_minimal() + 
+  facet_wrap(var~., ncol = 10, scales = "free")
+  
+```
+
+
+- 타겟 변수에 따른 독립 변수 분포 확인(평균)
+```{r fig.height=20, fig.width=12}
+
+# 몇몇 변수들이 타겟 0과 타겟1에 대해 평균치가 각각 다름
+# 대부분 정규분포 꼴을 띄었던 걸 생각해보면,,, 이러한 분포 차이가 유의미하게 작용할 수도 있겠다
+data %>% group_by(target) %>% 
+  summarise_all(mean) %>% 
+  gather(var_0:var_199, key = "var", value = "value") %>% 
+  mutate_if(is.character, parse_number) %>% 
+  ggplot() + 
+  geom_col(aes(x=target, y=value)) + 
+  facet_wrap(var~., ncol = 10, scales = "free")
+
+```
+- 변수 스케일링
+```{r fig.height=20, fig.width=12}
+data_x = data %>% select(-target)
+data_x %>% 
+  mutate_all(scale) %>% cbind(target = data$target) %>% 
+  gather(var_0:var_199, key = "var", value = "value") %>% 
+  mutate_if(is.character, parse_number) %>% 
+  mutate(target = as.character(target)) %>% 
+  ggplot(aes(x = value, fill = target, col = target)) + 
+  geom_histogram(alpha = 0.1, aes(y = ..density..), position = 'identity') + 
+  theme_minimal() + 
+  facet_wrap(var~., ncol = 10, scales = "free")
+  
+
+```
+- PCA
+```{r}
+# PCA도 절레절레
+principle = princomp(data_x)
+plot(principle)
+summary(principle)
+```
+
+
+
+
+# 그냥 모델링
+- train,test split
+```{r}
+set.seed(3333)
+test_idx = createDataPartition(data$target, p = .3, list = F)
+test = data[test_idx]
+train = data[-test_idx]
+```
+
+- 타겟 변수 비율 맞나 확인
+```{r}
+# 앵간 맞는 듯
+train[,.N,by = "target"] %>% mutate(N/sum(N))
+test[,.N,by = "target"]  %>% mutate(N/sum(N))
+```
+
+
+
+
+- 로지스틱에 라쏘 패널티 주고 예측해보자
+```{r}
+
+target = train$target
+train_x = train %>% dplyr::select(-target)
+train_x_scaled = train_x %>% mutate_all(scale, center = T, scale = T)
+
+train_fit = glmnet(x=train_x_scaled %>% as.matrix, y = target,
+                   family = binomial(),
+                   alpha = 1)
+
+
+plot(train_fit, "lambda")
+```
+
+
+```{r}
+target = data$target
+train_x = data %>% dplyr::select(-target)
+train_x_scaled = train_x %>% mutate_all(scale, center = T, scale = T)
+
+train_fit = glm(target~., data = data,
+                   family = binomial())
+
+selection = stats::step(train_fit, direction = "both")
+selection
+```
+
+
+
+```{r}
+options(warn = -1)
+major = data %>% filter(target == 0) %>% select(-target) %>% as.data.frame()
+minor = data %>% filter(target == 1) %>% select(-target) %>% as.data.frame()
+
+kstest_pvalue = function(x,y){
+  test = ks.test(x,y)
+  pvalue = test$p.value
+}
+
+pval = c()
+for (idx in 1:200){
+  p = kstest_pvalue(major[,idx], minor[,idx])
+  pval = c(pval, p)
+}
+number = 0:199
+tf = pval > 0.05
+number[tf]
+```
+
+
+
