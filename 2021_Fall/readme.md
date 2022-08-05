@@ -17,10 +17,12 @@ Advisor : JinYeong Bak (SKKU)
 
 사용 모델
  - Hard Parameter Sharning CNN  
-  - Shared_CNN class in train.py
+   - Shared_CNN class in train.py
+  
  ![HPS](https://github.com/victolee0/Voice-Profiling/blob/main/static/asset/Para.png)
  
  
  - CLSTM  
-  - CLSTM in train.py
+    - CLSTM in train.py
+  
  ![CLSTM](https://github.com/victolee0/Voice-Profiling/blob/main/static/asset/CLSTM.png)
